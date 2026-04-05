@@ -20,7 +20,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional
 
-from redisvl.extensions.llmcache import SemanticCache
+from redisvl.extensions.cache.llm import SemanticCache
 from redisvl.utils.vectorize import HFTextVectorizer
 
 logger = logging.getLogger(__name__)
