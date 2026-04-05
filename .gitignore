@@ -1,0 +1,6 @@
+gateway/vendor/
+worker/__pycache__/
+worker/.venv/
+*.pyc
+.DS_Store
+gateway/gateway

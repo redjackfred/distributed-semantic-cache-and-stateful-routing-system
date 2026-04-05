@@ -1,0 +1,21 @@
+gateway:
+  port: 8080
+  # 一致性雜湊虛擬節點數：越大分佈越均勻，但記憶體消耗略增
+  hash_replicas: 150
+  # 路由鍵欄位：用哪個欄位決定路由（system_prompt 或 prefix）
+  routing_key_field: "system_prompt"
+
+workers:
+  # Docker Compose 服務名稱解析
+  - "http://worker1:8001"
+  - "http://worker2:8001"
+
+redis:
+  url: "redis://redis:6379"
+  index_name: "llmcache"
+
+cache:
+  # 語義相似度門檻：向量餘弦距離 <= 0.2 等同於相似度 >= 0.8
+  # redisvl 使用距離（越小越相似），此處設 0.2 對應使用者規格的「0.8 相似度」
+  distance_threshold: 0.2
+  ttl_seconds: 3600
