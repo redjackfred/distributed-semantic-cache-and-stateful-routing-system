@@ -1,0 +1,100 @@
+version: "3.9"
+
+# ============================================================
+# 分散式語義快取路由系統 — 完整服務編排
+#
+# 服務拓撲：
+#   使用者 → [gateway:8080] → 一致性雜湊 → [worker1:8001] ↘
+#                                          → [worker2:8001] → [redis:6379]
+#
+# 路由穩定性驗證：
+#   同一 system_prompt 的請求，無論發送幾次，
+#   都應路由到同一台 Worker（觀察 worker_id 欄位是否固定）。
+# ============================================================
+
+services:
+
+  # Redis Stack：向量資料庫 + TTL 管理 + RediSearch 向量索引
+  redis:
+    image: redis/redis-stack:7.2.0-v9
+    container_name: semantic-cache-redis
+    ports:
+      - "6379:6379"
+      - "8001:8001"    # RedisInsight Web UI
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Python Worker 1：語義快取處理節點
+  worker1:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: semantic-cache-worker1
+    environment:
+      - WORKER_ID=worker1
+      - REDIS_URL=redis://redis:6379
+      - CACHE_DISTANCE_THRESHOLD=0.2
+      - CACHE_TTL_SECONDS=3600
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Python Worker 2：用於測試一致性雜湊負載分配
+  worker2:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: semantic-cache-worker2
+    environment:
+      - WORKER_ID=worker2
+      - REDIS_URL=redis://redis:6379
+      - CACHE_DISTANCE_THRESHOLD=0.2
+      - CACHE_TTL_SECONDS=3600
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Go API Gateway：控制層與路由層
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: semantic-cache-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - WORKERS=http://worker1:8001,http://worker2:8001
+      - PORT=8080
+    depends_on:
+      worker1:
+        condition: service_healthy
+      worker2:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    name: semantic-cache-network
