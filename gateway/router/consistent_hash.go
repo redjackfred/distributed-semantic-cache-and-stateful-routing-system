@@ -34,10 +34,17 @@ func NewConsistentHash(replicas int) *ConsistentHash {
 	}
 }
 
-// Add 向雜湊環加入一個 Worker 節點（冪等操作）。
+// Add 向雜湊環加入一個 Worker 節點。
+// 若節點已存在則不重複加入（真正的冪等操作）。
 func (c *ConsistentHash) Add(node string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// 檢查是否已存在：避免重複加入造成該節點虛擬節點數翻倍，進而扭曲負載分佈
+	firstKey := c.hash(fmt.Sprintf("%d-%s", 0, node))
+	if _, exists := c.ring[firstKey]; exists {
+		return // 已存在，冪等返回
+	}
 
 	for i := 0; i < c.replicas; i++ {
 		h := c.hash(fmt.Sprintf("%d-%s", i, node))
@@ -58,7 +65,8 @@ func (c *ConsistentHash) Remove(node string) {
 		delete(c.ring, h)
 	}
 
-	newKeys := c.keys[:0]
+	// 重建排序鍵列表，使用新切片避免保留舊底層陣列佔用記憶體
+	newKeys := make([]uint32, 0, len(c.keys)-c.replicas)
 	for _, k := range c.keys {
 		if _, exists := c.ring[k]; exists {
 			newKeys = append(newKeys, k)
