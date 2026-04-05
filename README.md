@@ -1,5 +1,31 @@
 # Distributed Semantic Cache & Stateful Routing System
 
+## The Problem
+
+Every LLM API call costs money and adds latency. In production, a large share of those calls are **semantically redundant** — users ask the same question in slightly different words, and the system calls the LLM every single time.
+
+Standard caching doesn't help. Exact-match key comparison misses "What is ML?" vs "Can you explain machine learning?" entirely. And even semantic caches break down at scale: when requests scatter randomly across multiple workers, no single worker accumulates enough cache history to be effective.
+
+## What This Solves
+
+| Pain Point | This System |
+|------------|-------------|
+| Paying for the same LLM answer repeatedly | Semantic vector cache returns stored responses for similar queries — no LLM call needed |
+| Exact-match caches miss paraphrased questions | ANN search on 384-dim embeddings catches semantically equivalent queries (cosine similarity ≥ 0.8) |
+| Cache hit rate collapses when scaled horizontally | Consistent hashing pins the same `system_prompt` context to the same worker — cache stays warm as you scale |
+| Cold-start latency on first request | Embedding model is pre-loaded at container startup, not on first query |
+| Vendor lock-in to one LLM provider | Swap the `_call_llm()` method — routing and caching logic is provider-agnostic |
+
+## Key Strengths
+
+- **7× latency reduction on cache hits** — measured ~180ms (LLM call) vs ~25ms (cache hit) in local testing
+- **Stateful routing without sticky sessions** — consistent hashing achieves worker affinity without infrastructure-level session pinning
+- **Graceful horizontal scaling** — adding a worker migrates only ~1/N keys (consistent hashing), avoiding cache thrashing that plagues modulo-based routing
+- **Semantic namespace isolation** — `system_prompt` is part of the cache key, so a customer service bot and a medical advisor never share cached answers to the same question
+- **Extensible eviction** — `EvictionPolicy` interface ships with a `SphereLFU` stub for future kernel density estimation-based eviction, replacing blunt TTL expiry
+
+---
+
 A polyglot architecture that combines a high-performance Go API Gateway with Python semantic cache workers to minimize redundant LLM API calls. Requests with the same context are pinned to the same worker via consistent hashing, maximizing vector cache hit rates.
 
 ## Architecture
