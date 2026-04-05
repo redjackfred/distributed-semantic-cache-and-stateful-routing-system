@@ -4,3 +4,13 @@ worker/.venv/
 *.pyc
 .DS_Store
 gateway/gateway
+
+# IDE and Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment files
+.env
+.env.local
